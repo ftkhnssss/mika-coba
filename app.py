@@ -1,68 +1,64 @@
-from openai import OpenAI
 import streamlit as st
-from dotenv import load_dotenv
 import os
-import shelve
+import google.generativeai as genai
 
-load_dotenv()
+# Configure Gemini API
+genai.configure(api_key=os.environ["GEMINI_API_KEY"])
 
-st.title("Streamlit Chatbot Interface")
+# Function to start chat session
+def start_chat():
+    # Configuration for model
+    generation_config = {
+        "temperature": 1,
+        "top_p": 0.95,
+        "top_k": 64,
+        "max_output_tokens": 8192,
+        "response_mime_type": "text/plain",
+    }
+    safety_settings = [
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+    ]
 
-USER_AVATAR = "👤"
-BOT_AVATAR = "🤖"
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    # Initialize Gemini model
+    model = genai.GenerativeModel(
+        model_name="gemini-1.5-flash",
+        safety_settings=safety_settings,
+        generation_config=generation_config,
+        system_instruction="Kamu adalah Mika asisten kesehatan virtual yang dibuat oleh tim GKMK-PI UPP Kampus Kendal Poltekkes Kemenkes Semarang. kamu harus memperkenalkan diri dengan lengkap di awal sesi percakapan. jangan bilang kamu bukan dokter, langsung saja jelaskan apa yang kemungkinan dialami oleh pengguna. selalu tanyakan keluhan lainnya setelah pengguna mengatakan keluhan pertama agar jawaban lebih akurat dan sebelum pengguna mengatakannya jangan jawab terlebih dahulu pertanyaan mereka. selalu sertakan juga pengobatan atau cara apa saja yang apa yang bisa dilakukan oleh pengguna. jika meungkinkan berikan satu diagnosis saja. untuk saran seperti konsultasikan ke dikter pindahkan saja ke bagian akhir dari teksmu bilang saja bahwa kamu adalah asisten virtual bukan dokter, untuk mendapatkan hasil yang lebih akurat pengguna harus memeriksakannya dan ucapkan itu setelah kamu memberiksan suspek diagnosis saja. Untuk awal sesi, selalu tanyakan juga nama, jenis kelamin dan usia pengguna agar diagnosamu lebih akurat. Sebagai tambahan selalu panggil pengguna berdasarkan usia untuk usia 0-15 kamu panggil dik, usia 16-29 kamu penggil kak dan selebihnya kamu panggil bapak atau ibu. Gunakan bahasa yang sopan dan gunakan emotikon agar lebih menarik. jika pengguna tidak menyebutkan nama, jenis kelamin dan usia tanyakan kembali sebelum kamu menjawabnya.",
+    )
 
-# Ensure openai_model is initialized in session state
-if "openai_model" not in st.session_state:
-    st.session_state["openai_model"] = "gpt-3.5-turbo"
-
+    # Start chat session
+    return model.start_chat(history=[])
 
 # Load chat history from shelve file
 def load_chat_history():
-    with shelve.open("chat_history") as db:
-        return db.get("messages", [])
-
+    # Implement your own method for loading chat history
+    pass
 
 # Save chat history to shelve file
 def save_chat_history(messages):
-    with shelve.open("chat_history") as db:
-        db["messages"] = messages
-
+    # Implement your own method for saving chat history
+    pass
 
 # Initialize or load chat history
 if "messages" not in st.session_state:
     st.session_state.messages = load_chat_history()
 
-# Sidebar with a button to delete chat history
-with st.sidebar:
-    if st.button("Delete Chat History"):
-        st.session_state.messages = []
-        save_chat_history([])
-
 # Display chat messages
 for message in st.session_state.messages:
-    avatar = USER_AVATAR if message["role"] == "user" else BOT_AVATAR
-    with st.chat_message(message["role"], avatar=avatar):
-        st.markdown(message["content"])
+    avatar = "👤" if message["role"] == "user" else "🤖"
+    st.write(f"{avatar}: {message['content']}")
 
 # Main chat interface
-if prompt := st.chat_input("How can I help?"):
+if prompt := st.text_input("How can I help?"):
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user", avatar=USER_AVATAR):
-        st.markdown(prompt)
-
-    with st.chat_message("assistant", avatar=BOT_AVATAR):
-        message_placeholder = st.empty()
-        full_response = ""
-        for response in client.chat.completions.create(
-            model=st.session_state["openai_model"],
-            messages=st.session_state["messages"],
-            stream=True,
-        ):
-            full_response += response.choices[0].delta.content or ""
-            message_placeholder.markdown(full_response + "|")
-        message_placeholder.markdown(full_response)
-    st.session_state.messages.append({"role": "assistant", "content": full_response})
+    with st.spinner("Thinking..."):
+        chat_session = start_chat()
+        response = chat_session.send_message(prompt)
+        st.session_state.messages.append({"role": "assistant", "content": response.text})
 
 # Save chat history after each interaction
 save_chat_history(st.session_state.messages)
